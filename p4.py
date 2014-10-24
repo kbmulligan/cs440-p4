@@ -2,7 +2,12 @@
 p4.py
 CS440 Assignment 4
 Submitted by K. Brett Mulligan (eID: kbmulli)
-This module ...
+This module uses constraint satisfaction to solve 
+the problem of how many knights can be placed on a 
+Chess board with no knights of the same color 
+attacking each other. Run backtracking_solve, 
+AC3_solve, or combined_solve with k knights on
+size n chessboard.
 """
 
 #################################################
@@ -26,6 +31,9 @@ import csp
 
 KNIGHT_CHAR1 = 'X'
 KNIGHT_CHAR2 = 'O'
+KNIGHT_CONFLICT = '#'
+
+VERSBOSE_CONSTRAINTS = False
 
 
 class Knights(csp.CSP):
@@ -36,23 +44,28 @@ class Knights(csp.CSP):
     domains = {}
     neighbors = {}
 
-    def __init__(self, k, n):
+    def __init__(self, k=8, n=4):
         self.boardlength = n
 
         self.vars = range(k*2)
         self.domains = {}
 
         for i in range(k):
-            self.white_knights.append([0,0])
-            self.black_knights.append([0,0])
+            self.white_knights.append([-1,-1])
+            self.black_knights.append([-1,-1])
+
+
+        self.positions = self.generate_all_coords()
 
         for var in self.vars:
-            self.domains[var] = list(self.generate_all_coords())
-            self.neighbors[var] = list(self.vars)
+            self.domains[var] = list(self.positions)
+            self.neighbors[var] = [x for x in self.vars if x != var]
 
         self.curr_domains = dict(self.domains)
 
         self.nassigns = 0
+
+        # csp.CSP.__init__(self, self.vars, self.domains, self.neighbors, self.constraints)
 
 
 
@@ -62,46 +75,118 @@ class Knights(csp.CSP):
             board.append(['.' for x in range(self.boardlength)])
 
         for w in self.white_knights:
-            board[w[0]][w[1]] = KNIGHT_CHAR1
+            if w in self.positions:
+                if board[w[0]][w[1]] == '.':
+                    board[w[0]][w[1]] = KNIGHT_CHAR1
+                else:
+                    board[w[0]][w[1]] = KNIGHT_CONFLICT
 
         for b in self.black_knights:
-            board[b[0]][b[1]] = KNIGHT_CHAR2
+            if b in self.positions:
+                if board[b[0]][b[1]] == '.':
+                    board[b[0]][b[1]] = KNIGHT_CHAR2
+                else:
+                    board[b[0]][b[1]] = KNIGHT_CONFLICT
 
         for x in range(len(board)):
             board[x] = ' '.join(board[x])
 
         return '\n'.join(board)
 
-    def update_knights(self, vals):
+    def display(self, a=None):
+        if a:
+            print self, '\nAssignment:\n', a
+            total = 0
+            for x in self.vars:
+                add = self.nconflicts(x, a[x], a)
+                total += add
+                # print x, 'conflicts:', add
+            print 'Total conflicts:', total
+            print 'Conflicted:', self.conflicted_vars(a)
+        else:
+            print self, '\nAssignment:\nN/A'
+
+    def print_curr_domains(self):
+        for v in self.vars:
+            print v, self.curr_domains[v]
+
+    def update_knights_with_list(self, vals):
         self.white_knights = []
         self.black_knights = []
 
-        for x in vals.keys():
-            if x < len(vals.keys())/2:
-                self.white_knights.append(vals[x])
-            else:
-                self.black_knights.append(vals[x])
-
-    def constraints(self, A, a, B, b):
-        not_conflicted = False
-
-        if a == b:
-            not_conflicted = False
-            # print 'constraints: same point'
-        elif not self.same_color(A,B):
-            not_conflicted = True
-            # print 'constraints: not same color, no need to check attacking'
-        elif not self.is_attacking(a,b):
-            not_conflicted = True
-            # print 'constraints: not attacking each other'
-        elif self.is_attacking(a,b):
-            not_conflicted = False
-            # print 'constraints: ARE attacking each other causing a conflict!'
+        if type(vals) is list:
+            for x in range(len(vals)):
+                if self.get_color(x) == 'white':
+                    self.white_knights.append(vals[x])
+                else:
+                    self.black_knights.append(vals[x])
         else:
-            not_conflicted = False
+            print 'update_knights w/ list: invalid vals:', vals
+
+    def update_knights_with_assignment(self, vals):
+        self.white_knights = []
+        self.black_knights = []
+
+        if type(vals) is dict:
+            for x in vals.keys():
+                if self.get_color(x) == 'white':
+                    self.white_knights.append(vals[x])
+                else:
+                    self.black_knights.append(vals[x])
+        else:
+            print 'update_knights w/ assignment: invalid vals:', vals
+
+    # should return True if meeting all constraints
+    def constraints(self, A, a, B, b):
+        conflicted = False
+
+        if VERSBOSE_CONSTRAINTS: print 'Comparing', A, a, 'and', B, b
+
+        if (A == B):
+            conflicted = False
+            if VERSBOSE_CONSTRAINTS: print 'constraints: comparing knight to itself'
+        elif (A != B) and (a == b):
+            conflicted = True
+            if VERSBOSE_CONSTRAINTS: print 'constraints: same point'
+        elif self.same_color(A,B) and self.is_attacking(a,b):
+            conflicted = True
+            if VERSBOSE_CONSTRAINTS: print 'constraints: ARE attacking each other causing a conflict!'
+        else:
+            conflicted = False
+            if VERSBOSE_CONSTRAINTS: print 'constraints: other case'
+
+        if VERSBOSE_CONSTRAINTS: print 'Conflicted:', conflicted
+
+        return not conflicted
+
+    # should return True if meeting all constraints
+    def constraints_backup(self, A, a, B, b):
+        conflicted = False
+
+        if VERSBOSE_CONSTRAINTS: print 'Comparing', A, a, 'and', B, b
+
+        if (A == B):
+            conflicted = False
+            if VERSBOSE_CONSTRAINTS: print 'constraints: comparing knight to itself'
+        elif (A != B) and (a == b):
+            conflicted = True
+            if VERSBOSE_CONSTRAINTS: print 'constraints: same point'
+        elif not self.same_color(A,B):
+            conflicted = False
+            if VERSBOSE_CONSTRAINTS: print 'constraints: not same color, no need to check attacking'
+        elif not self.is_attacking(a,b):
+            conflicted = False
+            if VERSBOSE_CONSTRAINTS: print 'constraints: not attacking each other'
+        elif self.is_attacking(a,b):
+            conflicted = True
+            if VERSBOSE_CONSTRAINTS: print 'constraints: ARE attacking each other causing a conflict!'
+        else:
+            conflicted = True
             print 'constraints: unknown case'
 
-        return not_conflicted
+        if VERSBOSE_CONSTRAINTS: print 'Conflicted:', conflicted
+
+        return not conflicted
 
     def is_attacking(self, pos1, pos2):
         return (get_distance(pos1, pos2) == 3) and (pos1[0] != pos2[0]) and (pos1[1] != pos2[1])
@@ -111,17 +196,18 @@ class Knights(csp.CSP):
 
     def get_color(self, knight):
         color = ''
-        if (knight >= len(self.vars)/2):
+        if (knight % 2 == 1):
             color = 'black'
         else:
             color = 'white'
         return color
 
     def generate_all_coords(self):
+        coords = []
         for row in range(self.boardlength):
             for col in range(self.boardlength):
-                self.positions.append((row, col))
-        return self.positions
+                coords.append((row, col))
+        return coords
 
     def randomize(self):
         new_vals = {}
@@ -135,64 +221,61 @@ def get_distance(pos1, pos2):
     return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
 
 def extract_solution(s):
-    return [s[x] for x in s.keys()]
+    white = [s[x] for x in s.keys() if x % 2 == 0]
+    black = [s[x] for x in s.keys() if x % 2 == 1]
+    return white + black
 
 def AC3_solve(k, n):
     knights = Knights(k, n)
 
-    solution = csp.AC3(knights)
+    print 'AC3...'
+    csp.AC3(knights)
 
-    if solution:
-        print 'Solution:', solution
-    else:
-        print 'No solution found.'
-
-    return solution
+    return
 
 def backtracking_solve(k, n):
     knights = Knights(k, n)
 
-    solution = csp.backtracking_search(knights)
+    print 'Knights:'
+    knights.display()
+
+
+    print 'backtracking_search...'
+    solution = csp.backtracking_search(knights, mcv=False, lcv=False, fc=False, mac=False)
+
+
+    print ''
+    if solution: knights.update_knights_with_assignment(solution)
+    knights.display(solution)
+
 
     if solution:
-        print 'Solution:', solution
+        # print 'Solution:', solution
+        sol = solution
     else:
         print 'No solution found.'
+        sol = None
 
-    return solution
+    return sol
 
 def combined_solve(k, n):
-    notimplemented
+    knights = Knights(k, n)
+    csp.AC3(knights)
+    solution = csp.backtracking_search(knights)
+    return solution
+
 
 
 def do_testing():
 
-    NUM_KNIGHTS = 14
-    BOARD_LENGTH = 8
-
-    knights = Knights(NUM_KNIGHTS, BOARD_LENGTH)
-    print knights
-
-    backtrack_sol = backtracking_solve(NUM_KNIGHTS, BOARD_LENGTH)
-    knights.update_knights(backtrack_sol)
-    print knights
-    print ''
-
-
-    knights = Knights(NUM_KNIGHTS, BOARD_LENGTH)
-    print knights
+    NUM_KNIGHTS = 12  
+    BOARD_LENGTH = 5
     
-    ac3_sol = AC3_solve(NUM_KNIGHTS, BOARD_LENGTH)
-    knights.update_knights(ac3_sol)
-    print knights
-    print ''
-
+    bs = backtracking_solve(NUM_KNIGHTS, BOARD_LENGTH)
     
-    # knights.update_knights(knights.randomize())
-    # print ''
-    # print 'Randomize'
-    # print knights
-    # print ''
+    
+
+
 
 
 if __name__ == '__main__':
