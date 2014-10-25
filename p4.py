@@ -19,14 +19,8 @@ size n chessboard.
 #################################################
 
 import time
-import re
 import random
-import math
-import sys
-import os
-import copy
 
-import search 
 import csp
 
 KNIGHT_CHAR1 = 'X'
@@ -35,6 +29,13 @@ KNIGHT_CONFLICT = '#'
 
 VERSBOSE_CONSTRAINTS = False
 
+DEBUG = False
+
+bs_time = 0
+ac3_time = 0
+cs_time = 0
+
+PRECISION = '%.3f'
 
 class Knights(csp.CSP):
 
@@ -226,55 +227,155 @@ def extract_solution(s):
     return white + black
 
 def AC3_solve(k, n):
+    global ac3_time
+
     knights = Knights(k, n)
+    t0 = time.time()
+
+    if DEBUG: print 'Knights:'
+    if DEBUG: knights.display()
+
+    knights.update_knights_with_assignment(knights.randomize())
+
+    # knights.print_curr_domains()
+    domains = [len(knights.curr_domains[key]) for key in knights.curr_domains.keys()]
+    if DEBUG: print sum(domains)
+
 
     print 'AC3...'
     csp.AC3(knights)
 
-    return
+    # knights.print_curr_domains()
+    domains = [len(knights.curr_domains[key]) for key in knights.curr_domains.keys()]
+    if DEBUG: print sum(domains)
+
+    sol = knights.infer_assignment()
+
+    if sol:
+        pass
+    else:
+        sol = None
+
+    ac3_time =  time.time() - t0
+    if DEBUG: print 'AC3S time: ' + PRECISION % ac3_time
+    if DEBUG: print ''
+    
+    return sol
+
+
+options = {'var order': csp.first_unassigned_variable, 'val order': csp.unordered_domain_values, 'inference': csp.forward_checking}
+    
+# first_unassigned_variable / mrv
+# unordered_domain_values / lcv
+# no_inference / forward_checking / mac
+
+# HEURISTIC             - TIME (n=15)                       (n=20)
+# no heuristics works       -   9.20,   9.12,   9.11        
+# LCV alone works           -  14.69,  14.79,  14.75
+# FC alone works            -   5.92,   7.03,   5.97        33.13
+# MAC alone works           - 887.60
+
+# LCV + FC works            -  10.47,  10.73,  10.59
+# LCV + MAC works           - 904.20
+
+# MRV + FC is slow
+# MRV + LCV is slow
+# MRV + LCV + FC is VERY slow
+# MRV + MAC is VERY VERY slow
+# MRV + LCV + MAC is EVEN SLOWER THAN THAT ^ work
+
+# MRV alone does not work
+
+
 
 def backtracking_solve(k, n):
+    global bs_time
+
     knights = Knights(k, n)
 
-    print 'Knights:'
-    knights.display()
+    if DEBUG: print 'Knights:'
+    if DEBUG: knights.display()
 
+    t0 = time.time()
 
     print 'backtracking_search...'
-    solution = csp.backtracking_search(knights, mcv=False, lcv=False, fc=False, mac=False)
+    solution = csp.backtracking_search(knights, options['var order'], options['val order'], options['inference'])
 
 
-    print ''
+    if DEBUG: print ''
     if solution: knights.update_knights_with_assignment(solution)
-    knights.display(solution)
+    if DEBUG: knights.display(solution)
 
 
     if solution:
+        sol = extract_solution(solution)
         # print 'Solution:', solution
-        sol = solution
     else:
-        print 'No solution found.'
+        if DEBUG: print 'BS: No solution found.'
         sol = None
+
+    bs_time =  time.time() - t0
+    if DEBUG: print 'BS time: ' + PRECISION % bs_time
+    if DEBUG: print ''
 
     return sol
 
 def combined_solve(k, n):
+    global cs_time
+
     knights = Knights(k, n)
+
+    # first_unassigned_variable / mrv
+    # unordered_domain_values / lcv
+    # no_inference / forward_checking / mac
+
+    # print 'Knights:'
+    if DEBUG: knights.display()
+
+    t0 = time.time()
+    
+    print 'combined search...'
+    if DEBUG: print 'CS: AC3...'
     csp.AC3(knights)
-    solution = csp.backtracking_search(knights)
-    return solution
+    if DEBUG: print 'CS: Backtracking search...'
+    solution = csp.backtracking_search(knights, options['var order'], options['val order'], options['inference'])
+
+    if DEBUG: print ''
+    if solution: knights.update_knights_with_assignment(solution)
+    if DEBUG: knights.display(solution)
+
+    if solution:
+        sol = extract_solution(solution)
+        # print 'Solution:', solution
+    else:
+        if DEBUG: print 'CS: No solution found.'
+        sol = None
+
+    cs_time =  time.time() - t0
+    if DEBUG: print 'CS time: ' + PRECISION % cs_time
+    if DEBUG: print ''
+
+    return sol
 
 
 
 def do_testing():
-
-    NUM_KNIGHTS = 12  
     BOARD_LENGTH = 5
+    # NUM_KNIGHTS = BOARD_LENGTH**2 / 2
+    NUM_KNIGHTS = 12
     
     bs = backtracking_solve(NUM_KNIGHTS, BOARD_LENGTH)
-    
-    
+    ac3s = AC3_solve(NUM_KNIGHTS, BOARD_LENGTH)
+    cs = combined_solve(NUM_KNIGHTS, BOARD_LENGTH)
 
+    print 'Backtracking solution: ', bs
+    print 'Backtracking time: ' + PRECISION % bs_time
+    print 'AC3 solution:          ', ac3s
+    print 'AC3 time:          ' + PRECISION % ac3_time
+    print 'Combined solution:     ', cs
+    print 'Combined time:     ' + PRECISION % cs_time
+    print 'Expected cs time:  ' + PRECISION % (ac3_time + bs_time)
+    
 
 
 
